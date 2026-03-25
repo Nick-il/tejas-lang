@@ -1,0 +1,6 @@
+func greet(greeting: str) {
+    var name := input("What's your name? ");
+    print fr"{greeting} {name}";
+}
+
+func say_hi := func() => greet("Hi");

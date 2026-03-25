@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 sourcer = { path = "libs/sourcer" }
+lexer = { path = "libs/lexer" }
