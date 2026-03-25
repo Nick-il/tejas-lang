@@ -1,7 +1,7 @@
 use crate::LiteralKind;
 use std::fmt::Display;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     // === Simple Tokens === ===
     LParen,
@@ -17,41 +17,41 @@ pub enum TokenKind {
     Caret,
     NewLine,
     Eof,
-    
+
     // === Complex Tokens === ===
     Bang,
     BangEqual,
-    
+
     Equal,
     EqualEqual,
     FatArrow, // EqualGreater
-    
+
     Greater,
     GreaterEqual,
-    
+
     Lesser,
     LesserEqual,
-    
+
     Plus,
     PlusEqual,
-    
+
     Minus,
     MinusEqual,
     Arrow, // MinusGreater
-    
+
     Star,
     StarEqual,
-    
+
     Slash,
     SlashEqual,
 
     Colon,
     Walrus, // ColorEqual
-    
+
     // === Literals & Identifiers === ===
     Literal(LiteralKind),
     Identifier(String),
-    
+
     // === Keywords === ===
     KwVar,
     KwFix,

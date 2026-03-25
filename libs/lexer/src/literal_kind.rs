@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::fmt::Write;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LiteralKind {
     Integer(i32),
     Float(f64),

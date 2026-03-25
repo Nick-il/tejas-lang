@@ -7,7 +7,7 @@ pub enum LexerError {
     UnknownCharacter{character: char, span: Span},
     UnterminatedComment(Span),
     UnterminatedString(Span),
-    
+
     // External
     SourcerError(SourcerError)
 }
