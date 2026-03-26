@@ -89,29 +89,26 @@ Lexical grammar is used by lexer while lexing the tokens. Its Main types are :
 Lowest priority to Highest Priority while moving down.
 
 ```ebnf
-args         := expression ( "," expression )* ;
+args        := expression ( "," expression )* ;
+lvalue      := IDENTIFIER ( "." IDENTIFIER )* ;
 
-expression   := assignment ;
-assignment   := conditional ( ("=" | "+=" | "-=" | "*=" | "/=") conditional )? ;
-conditional  := logic_or ( "if" logic_or "else" conditional )? ;
-logic_or     := logic_and ( "or" logic_and )* ;
-logic_and    := equality ( "and" equality )* ;
-equality     := comparison ( ("==" | "!=") comparison )* ;
-comparison   := term ( compare_op term )* ;
-compare_op   := ">=" | ">" | "<" | "<=" ;
-term         := exponent ( ("+" | "-") exponent )* ;
-exponent     := factor ( "^" exponent )? ; # Right Associative
-factor       := unary ( ("*" | "/" | "%") unary )* ;
-unary        := ( "+" | "-" | "not" ) unary | call ;
-call         := primary (
-                    ( "(" args? ")"      ) |
-                    ( "." IDENTIFIER     ) |
-                    ( "[" expression "]" )
-                )* ;
-primary      := IDENTIFIER | STRING     |
-                INT        | FLOAT      |
-                "true"     | "false"    |
-                ( "(" expression ")" )  ;
+expression  := assignment ;
+assignment  := lvalue ( "=" | "+=" | "-=" | "*=" | "/=" ) assignment
+               | conditional ;
+conditional := logic_or ( "if" logic_or "else" conditional )? ;
+logic_or    := logic_and  ( "or"  logic_and  )* ;
+logic_and   := equality   ( "and" equality   )* ;
+equality    := comparison (( "==" | "!=" ) comparison )* ;
+comparison  := term ( (">=" | ">" | "<" | "<=") term )+
+               | term ;
+term        := exponent (( "+" | "-" ) exponent )* ;
+exponent    := factor ( "^" exponent )? ;    # right-associative
+factor      := unary (( "*" | "/" | "%" ) unary )* ;
+unary       := ( "+" | "-" | "not" ) unary | call ;
+call        := primary (( "(" args? ")" ) | ( "." IDENTIFIER ))* ;
+primary     := IDENTIFIER | STRING | INT | FLOAT
+            | "true" | "false"
+            | ( "(" expression ")" ) ;
 ```
 
 ### Notes on Expression Grammar:
@@ -259,7 +256,7 @@ declaration         :=  give_decl  |
 * **Public (Exported):** Only symbols marked with `give` are accessible from other modules.
 * **Example 1: Attached to declaration**
 
-    **File: `math.lang`**
+    **File: `math.tej`**
     ```
     give func add(a: int, b: int) -> int { return a + b; }
     give func multiply(a: int, b: int) -> int { return a * b; }
@@ -271,7 +268,7 @@ declaration         :=  give_decl  |
 
 * **Example 2: Standalone statement**
 
-    **File: `math.lang`**
+    **File: `math.teg`**
     ```
     func add(a: int, b: int) -> int { return a + b; }
     func multiply(a: int, b: int) -> int { return a * b; }
@@ -286,9 +283,9 @@ declaration         :=  give_decl  |
 
 * **Example 3: Usage in another module**
 
-    **File: `main.lang`**
+    **File: `main.tej`**
     ```
-    bring "math.lang" as math;
+    bring "math.tej" as math;
     use math::{add, multiply, PI};
 
     print add(2, 3);           # OK
@@ -300,7 +297,7 @@ declaration         :=  give_decl  |
 ## Program Grammar
 
 ```ebnf
-program        :=  (bring_decl | use_stmt)* (give_stmt | declaration)* EOF ;
+program        :=  (bring_decl | use_stmt)* (give_stmt | give_decl | declaration)* EOF ;
 ```
 
 The program consists of:
