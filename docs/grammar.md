@@ -33,13 +33,12 @@ Lexical grammar is used by lexer while lexing the tokens. Its Main types are :
     * Other Punctuators : `=` `,` `.` `:` `;` `?`
 
 * Double Char Tokens
-  > All except `=>` end with `=`
+  > All end with `=`
 
     * Arithmetic Assignment : `+=` `-=` `*=` `/=`
     * Equality : `==` `!=`
     * Comparison : `<=` `>=`
     * Walrus : `:=` - To infer types during variable declarations
-    * Then Alias : `=>` - used as shorthand for single statement blocks.
     * RArrow : `->` - for func return type.
 * Numbers
     * Int
@@ -88,18 +87,20 @@ Lexical grammar is used by lexer while lexing the tokens. Its Main types are :
 ## Expression Grammar
 
 Lowest priority to Highest Priority while moving down.
-Dot Access and Indexing are pending.
 
 ```ebnf
 args         := expression ( "," expression )* ;
 
 expression   := assignment ;
-assignment   := logic_or ( "=" logic_or )? ;
+assignment   := conditional ( ("=" | "+=" | "-=" | "*=" | "/=") conditional )? ;
+conditional  := logic_or ( "if" logic_or "else" conditional )? ;
 logic_or     := logic_and ( "or" logic_and )* ;
 logic_and    := equality ( "and" equality )* ;
 equality     := comparison ( ("==" | "!=") comparison )* ;
-comparison   := term ( (">=" | ">" | "<" | "<=") term )* ;
-term         := factor ( ("+" | "-") factor )* ;
+comparison   := term ( compare_op term )* ;
+compare_op   := ">=" | ">" | "<" | "<=" ;
+term         := exponent ( ("+" | "-") exponent )* ;
+exponent     := factor ( "^" exponent )? ; # Right Associative
 factor       := unary ( ("*" | "/" | "%") unary )* ;
 unary        := ( "+" | "-" | "not" ) unary | call ;
 call         := primary (
@@ -111,16 +112,23 @@ primary      := IDENTIFIER | STRING     |
                 INT        | FLOAT      |
                 "true"     | "false"    |
                 ( "(" expression ")" )  ;
-
 ```
+
+### Notes on Expression Grammar:
+
+* **Conditional Expression (Python-style)** — `true_val "if" cond_expr "else" false_val`
+    * Right-associative: `a if b else c if d else e` = `a if b else (c if d else e)`
+    * Example: `10 if x > 5 else 20` evaluates to `10` if `x > 5`, otherwise `20`
+    * Example: `"pos" if x > 0 else "zero" if x == 0 else "neg"` for chained conditions
+* **Exponentiation** (`^`) is Right-associative: `2 ^ 3 ^ 2` = `2 ^ (3 ^ 2)` = `512`
+* **Chained Comparisons:** Multiple comparison operators can be chained and are desugared to logical AND.
+    * `a < b < c` desugars to `(a < b) and (b < c)`
+    * `0 < x <= 10` desugars to `(0 < x) and (x <= 10)`
+    * The middle value is evaluated only once and reused
 
 ## Statements Grammar
 
-```ebnf'
-# Utility
-block_alias     :=  Block | ("=>" single_stmt) ;
-single_stmt     :=  <statement that isnt Block> ;
-
+```ebnf
 # Statement Grammar
 statement       :=  expr_stmt     |
                     print_stmt    |
@@ -133,93 +141,174 @@ statement       :=  expr_stmt     |
                     continue_stmt |
                     return_stmt   ;
 
-expr_stmt       :=  expression ";"
-print_stmt      :=  "print" expression ";"
-Block           :=  "{" declarations* "}"
+expr_stmt       :=  expression ";" ;
+print_stmt      :=  "print" expression ";" ;
+Block           :=  "{" declaration* "}" ;
 
-
-if_stmt         :=  "if" expression block_alias ( "else" block_alias )?
-
-while_stmt      :=  "while" expression block_alias;
-for_stmt        :=  "for"
-                        ( varDecl | exprStmt | ";" )
+if_stmt         :=  "if" expression Block ( "else" Block )? ;
+while_stmt      :=  "while" expression Block ;
+for_stmt        :=  "for" ( var_decl | expr_stmt | ";" )
                         expression? ";"
                         expression?
-                     block_alias ; # go-style
+                     Block ;
 
-try_stmt        :=  "try" block_alias ("catch" IDENTIFIER? block_alias)+ ;
+try_stmt        :=  "try" Block ("catch" IDENTIFIER? Block)+ ;
 
 break_stmt      :=  "break" ";" ;
 continue_stmt   :=  "continue" ";" ;
 return_stmt     :=  "return" expression? ";" ;
 ```
 
+### Statement Notes:
+
+* All control flow statements (`if`, `while`, `for`, `try-catch`) require explicit `{ }` blocks.
+* The `for` loop follows Go-style syntax: `for (init; condition; increment) { ... }`
+* `try-catch` can have multiple catch blocks.
+* If `IDENTIFIER` is provided in catch, it binds the exception object; otherwise it is discarded.
+
 ## Declaration Grammar
 
 ```ebnf
 # Utility
 TYPE                     :=  "int" | "float" | "string" | "bool" ;
-DECL                     :=  "var" | "fix" | "const";
+DECL                     :=  "var" | "fix" | "const" ;
 
-params                   :=  ( IDENTIFIER ":" TYPE ) ( "," ( IDENTIFIER ":" TYPE ) )*;
+params                   :=  IDENTIFIER ":" TYPE ( "," IDENTIFIER ":" TYPE )* ;
 
-
-# Declaration Grammer
+# Declaration Grammar
 declaration     :=  var_decl  |
                     func_decl |
-                    statement;  # maybe will add class/struct decl later
+                    statement ;
 
-var_decl        :=  DECL IDENTIFIER ( (":" TYPE "=") | ":=" ) expression ";" ;
+var_decl        :=  DECL IDENTIFIER ":" TYPE "=" expression ";" |
+                    DECL IDENTIFIER ":=" expression ";" ;
 
-func_decl       :=  "func" IDENTIFIER "(" params? ")" ( "->" TYPE )? block_alias;
-
-
+func_decl       :=  "func" IDENTIFIER "(" params? ")" ( "->" TYPE )? Block ;
 ```
 
-* Variable Declaration :
-    * `DECL` is the type of variable declaration it can be :-
-        * `var` : declaration of mutable variable, (runtime variable)
-            * `var xyz = 1`
-        * `fix` : declaration of immutable variable, (runtime variable)
-            * `fix xyz = 1`
-        * `const` (compile-time variable)
-            * `const xyz = 1`
-            * Compile time constant, i.e. resolvable at compile time.
-            * Its value is substituted at compile-time.
-            * No runtime footprint.
-            * Const can also be made of `const` which will be folded also at compile-time. just no function calls for
-              now. (cuz it'll pollute the state)
+* Variable Declaration:
+    * `DECL` specifies the type of variable declaration:
+        * `var` : mutable variable (runtime)
+            * `var x: int = 5;` — explicit type
+            * `var x := 5;` — type inference
+        * `fix` : immutable variable (runtime)
+            * `fix x: int = 5;` — explicit type
+            * `fix x := 5;` — type inference
+        * `const` : compile-time constant
+            * `const x: int = 5;` — explicit type
+            * `const x := 5;` — type inference
+            * Value is substituted at compile-time; no runtime storage
+            * Cannot be reassigned (immutable)
+    * **All variables must be initialized immediately.** No uninitialized variables.
+    * Explicit type and inference are mutually exclusive:
+        * Use `: TYPE =` for explicit typing with initialization
+        * Use `:=` for type inference with initialization
 
-* Function Declaration
-    * declaration for both functions and methods.
-    * Specifying the type of each param is mandatory.
-    * If the return type is empty, it will be considered a void function.
+* Function Declaration:
+    * Type annotations on parameters are **mandatory**.
+    * Return type is optional; if omitted, the function is void.
+    * Function body must be a `Block` (braced statements).
+    * Declaration syntax: `func name(param: Type, ...) -> ReturnType { ... }`
 
 ## Import Grammar
 
-* `bring` : bring in a module from a file.
-* `use` : use a symbol from a module.
-* `give` : give a symbol to external module. (used for exporting)
+* `bring` : bring in a module from a file into the AST.
+* `use` : use (import) a symbol from a brought module.
+* `give` : explicitly export a symbol from the current module for external use (privacy control).
 
-```bnf
+```ebnf
 # Utility
-alias               :=  "as" IDENTIFIER
+alias               :=  "as" IDENTIFIER ;
 
-terminal_symbol     :=  ( IDENTIFIER alias? ) | "*"
+terminal_symbol     :=  ( IDENTIFIER alias? ) | "*" ;
 symbol              :=  ( IDENTIFIER "::" )* terminal_symbol ;
-symbols             :=  symbol ( "," symbol )*
-symbol_path         :=  ( IDENTIFIER "::" )+ ( ( "{" symbols? "}" ) | symbol )
+symbols             :=  symbol ( "," symbol )* ;
+symbol_path         :=  ( IDENTIFIER "::" )+ ( ( "{" symbols? "}" ) | symbol ) ;
 
+# Import/Export Grammar
 bring_decl          :=  "bring" STRING alias? ";" ;
 use_stmt            :=  "use" symbol_path ";" ;
-give_stmt           :=  "give" ( var_decl | func_decl | (  symbol_path ";" ) ) ;
+give_stmt           :=  "give" IDENTIFIER ";" ;
+give_decl           :=  "give" var_decl |
+                        "give" func_decl ;
+
+declaration         :=  give_decl  |
+                        var_decl   |
+                        func_decl  |
+                        give_stmt  |
+                        statement ;
 ```
+
+### Import/Export Notes:
+
+* `bring` loads a file into the AST. Multiple `bring` declarations can be used.
+* `use` imports symbols from a brought module into the current namespace.
+* `give` **explicitly marks symbols as public/exported** for external modules to use.
+    * Can be used in two ways:
+        1. **Attached to declaration:** `give func name() { ... }` or `give const X := value;` — marks the symbol as public at declaration time.
+        2. **Standalone statement:** `give IDENTIFIER;` — marks a previously declared symbol as public.
+    * Controls module privacy: symbols are **private by default**; `give` makes them public.
+    * **Semantic constraint:** A symbol can be exported via `give` **at most once** per module. Attempting to export a symbol that is already exported is a compile error.
+        * Example (error): `give func add() { } give add;` — illegal, add is already given
+* Shorthand for importing multiple symbols: `use module::{symbol1, symbol2};` desugars to `use module::symbol1; use module::symbol2;`
+* Circular imports are prohibited (detected at parse/compile time).
+
+### Privacy Semantics:
+
+* **Default (Private):** All declarations (`var`, `fix`, `const`, `func`) are private to their module.
+* **Public (Exported):** Only symbols marked with `give` are accessible from other modules.
+* **Example 1: Attached to declaration**
+
+    **File: `math.lang`**
+    ```
+    give func add(a: int, b: int) -> int { return a + b; }
+    give func multiply(a: int, b: int) -> int { return a * b; }
+    give const PI := 3.14159;
+
+    const PRIVATE_MAGIC := 42;  # Not exported
+    func privateHelper() { ... }
+    ```
+
+* **Example 2: Standalone statement**
+
+    **File: `math.lang`**
+    ```
+    func add(a: int, b: int) -> int { return a + b; }
+    func multiply(a: int, b: int) -> int { return a * b; }
+    const PI := 3.14159;
+    const PRIVATE_MAGIC := 42;
+
+    give add;
+    give multiply;
+    give PI;
+    # PRIVATE_MAGIC is not given, so it stays private
+    ```
+
+* **Example 3: Usage in another module**
+
+    **File: `main.lang`**
+    ```
+    bring "math.lang" as math;
+    use math::{add, multiply, PI};
+
+    print add(2, 3);           # OK
+    print multiply(4, 5);      # OK
+    print PI;                  # OK
+    print math::PRIVATE_MAGIC; # ERROR - not exported
+    ```
 
 ## Program Grammar
 
-I think it's self-explanatory.
-
 ```ebnf
-bring_block    :=  bring_decl* ( use_stmt | give stmt )* ;
-program        :=  bring_block declarations* EOF;
+program        :=  (bring_decl | use_stmt)* (give_stmt | declaration)* EOF ;
 ```
+
+The program consists of:
+1. Module imports (`bring`) and symbol imports (`use`) — can appear in any order, at the top
+2. Declarations, statements, and exports — can appear in any order
+   * `var_decl` — variable declaration
+   * `func_decl` — function declaration
+   * `give_stmt` — export an existing symbol
+   * `give_decl` — declare and export a symbol in one statement
+   * `statement` — executable statements
+3. End of file
