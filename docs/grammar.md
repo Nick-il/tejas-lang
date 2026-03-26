@@ -256,7 +256,7 @@ declaration         :=  give_decl  |
 * **Public (Exported):** Only symbols marked with `give` are accessible from other modules.
 * **Example 1: Attached to declaration**
 
-    **File: `math.lang`**
+    **File: `math.tej`**
     ```
     give func add(a: int, b: int) -> int { return a + b; }
     give func multiply(a: int, b: int) -> int { return a * b; }
@@ -268,7 +268,7 @@ declaration         :=  give_decl  |
 
 * **Example 2: Standalone statement**
 
-    **File: `math.lang`**
+    **File: `math.tej`**
     ```
     func add(a: int, b: int) -> int { return a + b; }
     func multiply(a: int, b: int) -> int { return a * b; }
@@ -283,9 +283,9 @@ declaration         :=  give_decl  |
 
 * **Example 3: Usage in another module**
 
-    **File: `main.lang`**
+    **File: `main.tej`**
     ```
-    bring "math.lang" as math;
+    bring "math.tej" as math;
     use math::{add, multiply, PI};
 
     print add(2, 3);           # OK
