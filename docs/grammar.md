@@ -89,29 +89,26 @@ Lexical grammar is used by lexer while lexing the tokens. Its Main types are :
 Lowest priority to Highest Priority while moving down.
 
 ```ebnf
-args         := expression ( "," expression )* ;
+args        := expression ( "," expression )* ;
+lvalue      := IDENTIFIER ( "." IDENTIFIER )* ;
 
-expression   := assignment ;
-assignment   := conditional ( ("=" | "+=" | "-=" | "*=" | "/=") conditional )? ;
-conditional  := logic_or ( "if" logic_or "else" conditional )? ;
-logic_or     := logic_and ( "or" logic_and )* ;
-logic_and    := equality ( "and" equality )* ;
-equality     := comparison ( ("==" | "!=") comparison )* ;
-comparison   := term ( compare_op term )* ;
-compare_op   := ">=" | ">" | "<" | "<=" ;
-term         := exponent ( ("+" | "-") exponent )* ;
-exponent     := factor ( "^" exponent )? ; # Right Associative
-factor       := unary ( ("*" | "/" | "%") unary )* ;
-unary        := ( "+" | "-" | "not" ) unary | call ;
-call         := primary (
-                    ( "(" args? ")"      ) |
-                    ( "." IDENTIFIER     ) |
-                    ( "[" expression "]" )
-                )* ;
-primary      := IDENTIFIER | STRING     |
-                INT        | FLOAT      |
-                "true"     | "false"    |
-                ( "(" expression ")" )  ;
+expression  := assignment ;
+assignment  := lvalue ( "=" | "+=" | "-=" | "*=" | "/=" ) assignment
+               | conditional ;
+conditional := logic_or ( "if" logic_or "else" conditional )? ;
+logic_or    := logic_and  ( "or"  logic_and  )* ;
+logic_and   := equality   ( "and" equality   )* ;
+equality    := comparison (( "==" | "!=" ) comparison )* ;
+comparison  := term ( (">=" | ">" | "<" | "<=") term )+
+               | term ;
+term        := exponent (( "+" | "-" ) exponent )* ;
+exponent    := factor ( "^" exponent )? ;    # right-associative
+factor      := unary (( "*" | "/" | "%" ) unary )* ;
+unary       := ( "+" | "-" | "not" ) unary | call ;
+call        := primary (( "(" args? ")" ) | ( "." IDENTIFIER ))* ;
+primary     := IDENTIFIER | STRING | INT | FLOAT
+            | "true" | "false"
+            | ( "(" expression ")" ) ;
 ```
 
 ### Notes on Expression Grammar:
@@ -300,7 +297,7 @@ declaration         :=  give_decl  |
 ## Program Grammar
 
 ```ebnf
-program        :=  (bring_decl | use_stmt)* (give_stmt | declaration)* EOF ;
+program        :=  (bring_decl | use_stmt)* (give_stmt | give_decl | declaration)* EOF ;
 ```
 
 The program consists of:
