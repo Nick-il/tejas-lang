@@ -101,9 +101,9 @@ logic_and   := equality   ( "and" equality   )* ;
 equality    := comparison (( "==" | "!=" ) comparison )* ;
 comparison  := term ( (">=" | ">" | "<" | "<=") term )+
                | term ;
-term        := exponent (( "+" | "-" ) exponent )* ;
-exponent    := factor ( "^" exponent )? ;    # right-associative
-factor      := unary (( "*" | "/" | "%" ) unary )* ;
+term        := factor (( "+" | "-" ) factor )* ;
+factor      := exponent (( "*" | "/" | "%" ) exponent )* ;
+exponent    := unary ( "^" exponent )? ;    # right-associative
 unary       := ( "+" | "-" | "not" ) unary | call ;
 call        := primary (( "(" args? ")" ) | ( "." IDENTIFIER ))* ;
 primary     := IDENTIFIER | STRING | INT | FLOAT
