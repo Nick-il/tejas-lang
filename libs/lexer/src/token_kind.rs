@@ -128,6 +128,8 @@ pub fn match_kw_lexeme(lexeme: &str) -> Option<TokenKind> {
         "use" => Some(TokenKind::KwUse),
         "as" => Some(TokenKind::KwAs),
         "give" => Some(TokenKind::KwGive),
+        "true" => Some(TokenKind::Literal(LiteralKind::Bool(true))),
+        "false" => Some(TokenKind::Literal(LiteralKind::Bool(false))),
         _ => None,
     }
 }

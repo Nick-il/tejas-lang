@@ -65,11 +65,11 @@ impl<'a> Lexer<'a> {
             })
         }
     }
-    pub fn scan_all(&mut self) -> &[Token] {
+    pub fn scan_all(&mut self) -> LexerResult<&[Token]> {
         while !self.is_finished() {
-            self.scan_once();
+            self.scan_once()?;
         }
-        self.tokens()
+        Ok(self.tokens())
     }
 
     pub fn is_finished(&self) -> bool {
