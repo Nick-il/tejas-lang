@@ -90,6 +90,20 @@ impl Display for TokenKind {
     }
 }
 
+impl TokenKind {
+    pub fn matches_kind(&self, other: &TokenKind) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    pub fn is_literal(&self) -> bool {
+        matches!(self, TokenKind::Literal(_))
+    }
+
+    pub fn is_identifier(&self) -> bool {
+        matches!(self, TokenKind::Identifier(_))
+    }
+}
+
 pub fn match_kw_lexeme(lexeme: &str) -> Option<TokenKind> {
     match lexeme {
         "var" => Some(TokenKind::KwVar),
