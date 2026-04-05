@@ -93,7 +93,7 @@ args        := expression ( "," expression )* ;
 lvalue      := IDENTIFIER ( "." IDENTIFIER )* ;
 
 expression  := assignment ;
-assignment  := lvalue ( "=" | "+=" | "-=" | "*=" | "/=" ) assignment
+assignment  := ( lvalue ( "=" | "+=" | "-=" | "*=" | "/=" ) assignment )
                | conditional ;
 conditional := logic_or ( "if" logic_or "else" conditional )? ;
 logic_or    := logic_and  ( "or"  logic_and  )* ;

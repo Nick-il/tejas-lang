@@ -12,3 +12,4 @@ pub use literal_kind::LiteralKind;
 pub use token::{Token};
 pub use cursor::Cursor;
 pub use scanner::Lexer;
+pub use errors::{LexerError, LexerResult};

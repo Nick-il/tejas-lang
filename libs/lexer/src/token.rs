@@ -2,7 +2,7 @@ use crate::token_kind::TokenKind;
 use sourcer::Span;
 use std::fmt::Formatter;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     kind: TokenKind,
     span: Span,
