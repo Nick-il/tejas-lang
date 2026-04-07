@@ -1,6 +1,7 @@
-use crate::expr::Expr;
+use crate::Stmt;
+use crate::Expr;
 use crate::errors::{ParserError, ParserResult};
-use lexer::{Token, TokenKind};
+use lexer::{Token, TokenKind, LiteralKind};
 use sourcer::Span;
 
 
@@ -45,15 +46,22 @@ const UNARY_OPS: &[TokenKind] = &[
 pub struct Parser<'a> {
     tokens: &'a [Token],
     current: usize,
+    stmts: Vec<Stmt>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
-        Parser { tokens, current: 0 }
+        Parser { tokens, current: 0, stmts: Vec::new() }
     }
 
-    pub fn parse(&mut self) -> ParserResult<Expr> {
-        self.expression()
+    pub fn parse(&mut self) -> ParserResult<&[Stmt]> {
+
+        self.stmts = Vec::new();
+        while !self._is_at_end() {
+            let stmt = self.statement()?;
+            self.stmts.push(stmt);
+        }
+        Ok(&self.stmts)
     }
 }
 
@@ -173,7 +181,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-// Expression parsing methods
+// Expression parsing
 impl<'a> Parser<'a> {
     // Made public for testing purposes, but should ideally be private and only parse statements at the top level
     pub fn expression(&mut self) -> ParserResult<Expr> {
@@ -190,7 +198,7 @@ impl<'a> Parser<'a> {
 
         // Check if the current token is an assignment operator
         if self._match(ASSIGN_OPS) {
-            // let op_token = self._previous().clone(); // not used
+            let op_token = self._previous().clone(); // not used
             let value = self.assignment()?; // right-associatve
 
             // Ensure the left-hand side is a valid lvalue (identifier or property access)
@@ -200,9 +208,41 @@ impl<'a> Parser<'a> {
 
             let span = lval.span().merge_to(value.span())?; // get span now since it will be boxed later
 
+            let rhs = match op_token.kind() {
+                TokenKind::Equal => value,
+                TokenKind::PlusEqual | TokenKind::MinusEqual | TokenKind::StarEqual | TokenKind::SlashEqual => {
+                    // For compound assignments, we desugar them into binary operations
+                    let operator_kind = match op_token.kind() {
+                        TokenKind::PlusEqual => TokenKind::Plus,
+                        TokenKind::MinusEqual => TokenKind::Minus,
+                        TokenKind::StarEqual => TokenKind::Star,
+                        TokenKind::SlashEqual => TokenKind::Slash,
+                        _ => unreachable!(),
+                    };
+
+                    let operator_token = Token::new(
+                        operator_kind, // This is not ideal but we don't have a separate token for the operator in compound assignments
+                        op_token.span().clone().mark_synthetic(true), // Mark this token as synthetic since it doesn't exist in the source code
+                    );
+
+                    // The span covers from the start of the left-hand side to the end of the right-hand side.
+                    // Mark this as synthetic since it doesn't exist in source code.
+                    // We are making this now since value will be boxed later.
+                    let binary_span = span.mark_synthetic(true);
+
+                    Expr::Binary {
+                        left: Box::new(lval.clone()),
+                        operator: operator_token,
+                        right: Box::new(value),
+                        span: binary_span,
+                    }
+                },
+                _ => unreachable!(),
+            };
+
             return Ok(Expr::Assignment {
                 target: Box::new(lval),
-                value: Box::new(value),
+                value: Box::new(rhs),
                 span,
             });
         }
@@ -449,3 +489,256 @@ impl<'a> Parser<'a> {
     }
 }
 
+// Statements parsing
+impl<'a> Parser<'a> {
+    pub fn statement(&mut self) -> ParserResult<Stmt> {
+        // statement    := expr_stmt
+        //              | print_stmt
+        //              | block
+        //              | if_stmt
+        //              | while_stmt
+        //              | for_stmt
+        //              | return_stmt
+        //              | break_stmt
+        //              | continue_stmt
+        //              | var_decl
+        //              | fix_decl
+        //              | const_decl
+        //              | func_decl ;
+
+        match self._peek().kind() {
+            TokenKind::KwPrint => self.print_statement(),
+            TokenKind::LBrace => self.block_statement(),
+            TokenKind::KwIf => self.if_statement(),
+            TokenKind::KwWhile => self.while_statement(),
+            TokenKind::KwFor => self.for_statement(),
+            TokenKind::KwReturn => self.return_statement(),
+            TokenKind::KwBreak => self.break_statement(),
+            TokenKind::KwContinue => self.continue_statement(),
+            TokenKind::KwVar => self.var_declaration(),
+            TokenKind::KwFix => self.fix_declaration(),
+            TokenKind::KwConst => self.const_declaration(),
+            TokenKind::KwFunc => self.func_declaration(),
+            _ => self.expr_statement(), // Default to expression statement
+        }
+    }
+
+    fn expr_statement(&mut self) -> ParserResult<Stmt> {
+        // expr_stmt    := expression ";" ;
+        let expr = self.expression()?;
+        let semicolon_token = self._consume(&TokenKind::Semicolon, Some("Expected ';' after expression"))?;
+
+        let span = expr.span().merge_to(semicolon_token.span())?; // get span now since it will be boxed later
+
+        Ok(Stmt::ExprStmt(expr, span))
+    }
+
+    fn print_statement(&mut self) -> ParserResult<Stmt> {
+        // print_stmt   := "print" expression ";" ;
+        // TODO: Remove Later
+        let print_token = self._consume(&TokenKind::KwPrint, None)?;
+        let print_token_span = print_token.span().clone();
+        let expr = self.expression()?;
+        let semicolon_token = self._consume(&TokenKind::Semicolon, Some("Expected ';' after value"))?;
+
+        let span = print_token_span.merge_to(semicolon_token.span())?; // get span now since it will be boxed later
+
+        Ok(Stmt::PrintStmt(expr, span))
+    }
+
+    fn block_statement(&mut self) -> ParserResult<Stmt> {
+        // block        := "{" statement* "}" ;
+        let left_brace = self._consume(&TokenKind::LBrace, None)?;
+        let left_brace_span = left_brace.span().clone();
+        let mut stmts = Vec::new();
+
+        while !self._check(&TokenKind::RBrace) && !self._is_at_end() {
+            stmts.push(self.statement()?);
+        }
+
+        let right_brace = self._consume(&TokenKind::RBrace, Some("Expected '}' after block"))?;
+
+        let span = left_brace_span.merge_to(right_brace.span())?; // get span now since it will be boxed later
+
+        Ok(Stmt::Block(stmts, span))
+    }
+
+    fn if_statement(&mut self) -> ParserResult<Stmt> {
+        // if_stmt      := "if" expression block ( "else" ( if_stmt | block ) )? ;
+        let if_token = self._consume(&TokenKind::KwIf, None)?;
+        let if_token_span = if_token.span().clone();
+
+        let condition = self.expression()?;
+        let then_branch = self.block_statement()?;
+
+        let else_branch = if self._match(&[TokenKind::KwElse]) {
+            if self._check(&TokenKind::KwIf) {
+                Some(Box::new(self.if_statement()?))
+            } else {
+                Some(Box::new(self.block_statement()?))
+            }
+        } else {
+            None
+        };
+
+        let span = if_token_span.merge_to(
+            else_branch.as_ref().map_or(then_branch.span(), |b| b.span())
+        )?;
+
+        Ok(Stmt::IfStmt { condition, then_branch: Box::new(then_branch), else_branch, span })
+    }
+
+    fn while_statement(&mut self) -> ParserResult<Stmt> {
+        // while_stmt   := "while" expression block ;
+        let while_token = self._consume(&TokenKind::KwWhile, None)?;
+        let while_token_span = while_token.span().clone();
+
+        let condition = self.expression()?;
+        let body = self.block_statement()?;
+
+        let span = while_token_span.merge_to(body.span())?; // get span now since it will be boxed later
+
+        Ok(Stmt::WhileStmt { condition: Box::new(condition), body: Box::new(body), span })
+    }
+
+
+    // TODO: Review again after getting enough sleep
+    fn for_statement(&mut self) -> ParserResult<Stmt> {
+        // for_stmt        :=  "for" ( var_decl | expr_stmt | ";" )
+        //                         expression? ";"
+        //                         expression?
+        //                         Block ;
+
+        // Desugar for loop into while loop
+        let for_token = self._consume(&TokenKind::KwFor, None)?;
+        let for_token_span = for_token.span().clone();
+
+        let initializer = if self._match(&[TokenKind::Semicolon]) {
+            None
+        } else if self._check(&TokenKind::KwVar) {
+            Some(Box::new(self.var_declaration()?))
+        }
+        else if self._check(&TokenKind::KwFix) {
+            Some(Box::new(self.fix_declaration()?))
+        }
+        else {
+            Some(Box::new(self.expr_statement()?))
+        };
+
+        let condition = if !self._check(&TokenKind::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self._consume(&TokenKind::Semicolon, Some("Expected ';' after loop condition"))?;
+
+        let increment = if !self._check(&TokenKind::LBrace) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        let body = self.block_statement()?;
+
+        // We desugar the for loop into a while loop with the initializer before it and the increment at the end of the body
+        let desugared_body = if let Some(increment) = increment {
+            let increment_stmt_span = increment.span().clone().mark_synthetic(true); // Mark this span as synthetic since it doesn't exist in the source code
+            let body_span = body.span().clone().mark_synthetic(true); // Mark this span as synthetic since it will now include the increment which doesn't exist in the source code
+
+            let mut stmts = match body {
+                Stmt::Block(stmts, _) => stmts, // If body is already a block, just add to its statements
+                _ => vec![body], // Otherwise, create a new block with the body as its only statement
+            };
+            stmts.push(Stmt::ExprStmt(increment, increment_stmt_span)); // Add the increment as the last statement in the body
+
+            Stmt::Block(stmts, body_span) // The span of the new block now covers the original body and the increment
+
+        } else {
+            // No increment, just use the body as is
+            body
+        };
+
+        let desugared_body_span = desugared_body.span().clone();
+
+        let condition = condition.unwrap_or_else(|| {
+            Expr::Literal(
+                Token::new(
+                    TokenKind::Literal(LiteralKind::Bool(true)),
+                    for_token_span.clone().mark_synthetic(true) // Mark this span as synthetic since it doesn't exist in the source code
+                ))
+            }); // If no condition, use 'true' literal
+
+        let while_stmt = Stmt::WhileStmt {
+            condition: Box::new(condition),
+            body: Box::new(desugared_body),
+            span: for_token_span.merge_to(&desugared_body_span)?.mark_synthetic(true), // get span from 'for' to end of body
+        };
+
+        if let Some(initializer) = initializer {
+            Ok(Stmt::Block(vec![
+                *initializer,
+                while_stmt,
+            ], for_token_span.merge_to(&desugared_body_span)?.mark_synthetic(true))) // get span from 'for' to end of body
+        } else {
+            Ok(while_stmt)
+        }
+    }
+
+    fn return_statement(&mut self) -> ParserResult<Stmt> {
+        // return_stmt   := "return" expression? ";" ;
+        let return_token = self._consume(&TokenKind::KwReturn, None)?;
+        let return_span = return_token.span().clone();
+
+        let value = if !self._check(&TokenKind::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        let semicolon_token = self._consume(&TokenKind::Semicolon, Some("Expected ';' after return value."))?;
+        let span = return_span.merge_to(semicolon_token.span())?;
+
+        Ok(Stmt::ReturnStmt { value, span })
+    }
+
+    fn break_statement(&mut self) -> ParserResult<Stmt> {
+        // break_stmt    := "break" ";" ;
+        let break_token = self._consume(&TokenKind::KwBreak, None)?;
+        let break_token_span = break_token.span().clone();
+        let semicolon_token = self._consume(&TokenKind::Semicolon, Some("Expected ';' after 'break'."))?;
+        let span = break_token_span.merge_to(semicolon_token.span())?;
+
+        Ok(Stmt::BreakStmt(span))
+    }
+
+    fn continue_statement(&mut self) -> ParserResult<Stmt> {
+        // continue_stmt := "continue" ";" ;
+        let continue_token = self._consume(&TokenKind::KwContinue, None)?;
+        let continue_token_span = continue_token.span().clone();
+        let semicolon_token = self._consume(&TokenKind::Semicolon, Some("Expected ';' after 'continue'."))?;
+        let span = continue_token_span.merge_to(semicolon_token.span())?;
+
+        Ok(Stmt::ContinueStmt(span))
+    }
+
+    fn var_declaration(&mut self) -> ParserResult<Stmt> {
+        // var_decl      := "var" IDENTIFIER ( ":" type )? ";" ;
+        todo!()
+    }
+
+    fn fix_declaration(&mut self) -> ParserResult<Stmt> {
+        // fix_decl      := "fix" IDENTIFIER ( ":" type )? ";" ;
+        todo!()
+    }
+
+    fn const_declaration(&mut self) -> ParserResult<Stmt> {
+        // const_decl    := "const" IDENTIFIER ( ":" type )? "=" expression ";" ;
+        todo!()
+    }
+
+    fn func_declaration(&mut self) -> ParserResult<Stmt> {
+        // func_decl     := "func" IDENTIFIER "(" parameters? ")" block ;
+        todo!()
+    }
+}
