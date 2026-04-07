@@ -8,8 +8,12 @@ mod tests {
     fn tokenize(content: &str) -> Vec<TokenKind> {
         let source = SourceText::new(SourceID::new(1), "".to_string(), content.to_string());
         let mut lexer = Lexer::new(&source);
-        let tokens = lexer.scan_all();
-        tokens.iter().map(|t| t.kind().clone()).collect()
+        let tokens = match lexer.scan_all() {
+            Ok(tokens) => tokens,
+            Err(e) => panic!("Lexer error: {:?}", e),
+        };
+
+        tokens.iter().map(|t: &Token| t.kind().clone()).collect()
     }
 
     fn get_token_kinds(content: &str) -> Vec<TokenKind> {
