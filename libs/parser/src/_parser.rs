@@ -609,7 +609,6 @@ impl<'a> Parser<'a> {
         //                         expression?
         //                         Block ;
 
-        // Desugar for loop into while loop
         let for_token = self._consume(&TokenKind::KwFor, None)?;
         let for_token_span = for_token.span().clone();
 
