@@ -46,7 +46,7 @@ pub enum TokenKind {
     SlashEqual,
 
     Colon,
-    Walrus, // ColorEqual
+    Walrus, // ColonEqual
 
     // === Literals & Identifiers === ===
     Literal(LiteralKind),

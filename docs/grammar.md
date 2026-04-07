@@ -142,12 +142,12 @@ expr_stmt       :=  expression ";" ;
 print_stmt      :=  "print" expression ";" ;
 Block           :=  "{" declaration* "}" ;
 
-if_stmt         :=  "if" expression Block ( "else" Block )? ;
+if_stmt         :=  "if" expression Block ( "else" ( if_stmt | Block ) )? ;
 while_stmt      :=  "while" expression Block ;
 for_stmt        :=  "for" ( var_decl | expr_stmt | ";" )
                         expression? ";"
                         expression?
-                     Block ;
+                        Block ;
 
 try_stmt        :=  "try" Block ("catch" IDENTIFIER? Block)+ ;
 
